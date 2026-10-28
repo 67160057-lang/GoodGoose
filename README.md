@@ -4,6 +4,18 @@
 
 - เว็บไซต์: https://goodgoose.duckdns.org
 
+## สมาชิกกลุ่ม
+
+| ชื่อ-นามสกุล | รหัสนักศึกษา |
+|---|---|
+| วริทญ์นันษ์ แสงจันทร์ | 67160057 |
+| ณัฏฐนันท์ สิงห์ทองเมือง | 67160064 |
+| ปัณณทัต เสือหลง | 67160074 |
+| สืบสกุล พรสว่าง | 67160078 |
+| พัชรพร ครุธตำคำ | 67160099 |
+| สิรวิชญ์ แซ่กัว | 67160108 |
+| ปรมินทร์ ดวงเกิด | 67160261 |
+
 ## สถาปัตยกรรม
 
 ```
@@ -62,6 +74,12 @@ kbdinteractiveauthentication no
 | `ssh -o PubkeyAuthentication=no user@goodgoose.duckdns.org` | `Permission denied (publickey).` |
 | `ssh -i ~/.ssh/id_ed25519 user@goodgoose.duckdns.org` | เข้าได้ ไม่ถามรหัสผ่าน |
 
+![ค่า SSH จาก sshd -T](docs/01-sshd-config.png)
+
+![SSH ด้วย root และรหัสผ่านถูกปฏิเสธ](docs/02-ssh-denied.png)
+
+![เวอร์ชันโปรแกรม](docs/03-versions.png)
+
 ## ด่าน 2: Firewall อนุญาตเฉพาะประเทศไทย
 
 ไฟล์: [`config/firewall/setup-firewall.sh`](config/firewall/setup-firewall.sh)
@@ -82,15 +100,24 @@ sudo bash config/firewall/setup-firewall.sh
 | การทดสอบ | ผล |
 |---|---|
 | เปิดเว็บจากไทย | เข้าได้ปกติ |
-| เปิดเว็บผ่าน VPN เนเธอร์แลนด์ | `ERR_TIMED_OUT` |
-| `iptables -L INPUT -n -v` | policy DROP มีแพ็กเก็ตถูกทิ้งกว่า 1,000 |
+| เปิดเว็บผ่าน VPN สิงคโปร์ / เนเธอร์แลนด์ | `ERR_TIMED_OUT` |
+| `iptables -L INPUT -n -v` | policy DROP ทิ้งไปแล้ว 11,625 แพ็กเก็ต |
 | IP ต่างประเทศใน Apache log หลังตั้ง firewall | ไม่พบ |
+
+![กฎ iptables (ปิด IP ผู้ดูแลไว้)](docs/04-iptables.png)
+
+![เปิดผ่าน VPN สิงคโปร์ ขึ้น ERR_TIMED_OUT](docs/05-vpn-blocked.png)
+
+![Azure NSG เปิดเฉพาะ 22, 80, 443](docs/06-azure-nsg.png)
+
+![เปิดเว็บจากไทยได้ปกติ](docs/07-website.png)
 
 ## Security hardening เพิ่มเติม
 
 - `wp-config.php` สิทธิ์ 640
-- อัปเดตแพ็กเก็จความปลอดภัยของ PHP/Ubuntu (`sudo apt update && sudo apt upgrade -y && sudo systemctl restart apache2`)
-- ซ่อนเวอร์ชัน Apache/PHP: [`config/apache/security-hardening.conf`](config/apache/security-hardening.conf), [`config/php/99-hardening.ini`](config/php/99-hardening.ini)
+- PHP ได้แพตช์ช่องโหว่ CVE-2026-109618 และ CVE-2026-109619 แล้ว (ตรวจด้วย `apt changelog php8.3-common | grep CVE-2026-10961`)
+- ซ่อนเวอร์ชัน Apache/PHP (`ServerTokens Prod`, `ServerSignature Off`, `expose_php = Off`) ผลคือ header ขึ้นแค่ `Server: Apache`
+- บล็อกการรัน PHP ในโฟลเดอร์ uploads และปิด `xmlrpc.php`: [`config/apache/security-hardening.conf`](config/apache/security-hardening.conf), [`config/php/99-hardening.ini`](config/php/99-hardening.ini)
 - `DISALLOW_FILE_EDIT` ใน `wp-config.php` (ดู [`wordpress/wp-config-sample.php`](wordpress/wp-config-sample.php))
 - ลบ `readme.html` และ `license.txt` ออกจาก web root
 - MySQL ฟังเฉพาะ `127.0.0.1:3306`, Azure NSG เปิดเฉพาะ 22, 80, 443
