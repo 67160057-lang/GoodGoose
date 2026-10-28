@@ -1,0 +1,14 @@
+# Secrets — never commit
+wp-config.php
+.env
+*.pem
+*.key
+id_ed25519*
+id_rsa*
+*.sql
+*.sql.gz
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/
