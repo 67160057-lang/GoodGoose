@@ -1,0 +1,7 @@
+[Unit]
+Description=GoodGoose AI log scan
+
+[Service]
+Type=oneshot
+EnvironmentFile=-/etc/goodgoose/gemini.env
+ExecStart=/usr/bin/python3 /opt/gg-scan/scan.py

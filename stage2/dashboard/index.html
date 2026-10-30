@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>GoodGoose Security Dashboard</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+  body{font-family:system-ui,"Sarabun",sans-serif;margin:0;background:#0f172a;color:#e2e8f0}
+  main{max-width:1100px;margin:auto;padding:16px}
+  h1{font-size:22px;margin:8px 0 4px} .muted{color:#94a3b8;font-size:13px}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin:16px 0}
+  .card{background:#1e293b;border-radius:10px;padding:14px}
+  .num{font-size:28px;font-weight:700} .lbl{color:#94a3b8;font-size:13px}
+  .two{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:12px}
+  table{width:100%;border-collapse:collapse;font-size:14px} td{padding:4px 6px;border-bottom:1px solid #334155;word-break:break-all}
+  .risk-high{color:#f87171} .risk-medium{color:#fbbf24} .risk-low{color:#4ade80}
+  li{margin:6px 0}
+</style>
+</head>
+<body>
+<main>
+  <h1>GoodGoose Security Dashboard</h1>
+  <div class="muted" id="updated">กำลังโหลด…</div>
+
+  <div class="grid">
+    <div class="card"><div class="num" id="drop">-</div><div class="lbl">แพ็กเก็ตต่างประเทศถูก DROP (10 นาที)</div></div>
+    <div class="card"><div class="num" id="susp">-</div><div class="lbl">คำขอ path น่าสงสัย</div></div>
+    <div class="card"><div class="num" id="rl">-</div><div class="lbl">wp-login ถูกจำกัด (429)</div></div>
+    <div class="card"><div class="num" id="ssh">-</div><div class="lbl">SSH login ล้มเหลว</div></div>
+    <div class="card"><div class="num" id="req">-</div><div class="lbl">คำขอเว็บทั้งหมด</div></div>
+  </div>
+
+  <div class="card"><b>สรุปจาก AI (Gemini)</b> <span id="risk"></span>
+    <p id="summary"></p><ul id="incidents"></ul></div>
+
+  <div class="card" style="margin-top:12px"><b>แนวโน้ม 24 ชั่วโมง</b><canvas id="trend" height="90"></canvas></div>
+
+  <div class="two" style="margin-top:12px">
+    <div class="card"><b>IP ที่ถูก DROP บ่อยสุด</b><table id="t-drop"></table></div>
+    <div class="card"><b>พอร์ตที่ถูกยิง</b><table id="t-ports"></table></div>
+    <div class="card"><b>Path น่าสงสัย</b><table id="t-paths"></table></div>
+    <div class="card"><b>IP ที่ SSH ล้มเหลว</b><table id="t-ssh"></table></div>
+  </div>
+</main>
+<script>
+// ข้อความทั้งหมดมาจาก log ที่ผู้โจมตีควบคุมได้ จึงใช้ textContent เท่านั้น ห้าม innerHTML
+const $ = id => document.getElementById(id);
+function fillTable(id, rows) {
+  const t = $(id); t.replaceChildren();
+  if (!rows || !rows.length) { const r = t.insertRow(); r.insertCell().textContent = "ไม่มี"; return; }
+  for (const [k, v] of rows) { const r = t.insertRow(); r.insertCell().textContent = k; r.insertCell().textContent = v; }
+}
+async function load() {
+  const [latest, history] = await Promise.all([
+    fetch("data/latest.json", {cache: "no-store"}).then(r => r.json()),
+    fetch("data/history.json", {cache: "no-store"}).then(r => r.json()),
+  ]);
+  $("updated").textContent = "อัปเดตล่าสุด " + new Date(latest.time * 1000).toLocaleString("th-TH") + " · สแกนทุก 10 นาที";
+  $("drop").textContent = latest.drop_total; $("susp").textContent = latest.suspicious_total;
+  $("rl").textContent = latest.rate_limited_total; $("ssh").textContent = latest.ssh_fail_total;
+  $("req").textContent = latest.requests;
+  fillTable("t-drop", latest.drop_ips); fillTable("t-ports", latest.drop_ports);
+  fillTable("t-paths", latest.suspicious_paths); fillTable("t-ssh", latest.ssh_fail_ips);
+
+  const ai = latest.ai || {};
+  $("summary").textContent = ai.error || ai.summary_th || "";
+  const risk = ["low", "medium", "high"].includes(ai.risk) ? ai.risk : "";
+  $("risk").textContent = risk ? "ความเสี่ยง: " + risk : ""; $("risk").className = risk ? "risk-" + risk : "";
+  const ul = $("incidents"); ul.replaceChildren();
+  for (const i of (Array.isArray(ai.incidents) ? ai.incidents : [])) {
+    const li = document.createElement("li");
+    li.textContent = `[${i.severity}] ${i.type} — ${(i.ips || []).join(", ")} : ${i.evidence} → ${i.recommendation}`;
+    ul.appendChild(li);
+  }
+
+  const h = history.slice(-144);
+  const labels = h.map(x => new Date(x.time * 1000).toLocaleTimeString("th-TH", {hour: "2-digit", minute: "2-digit"}));
+  const ds = (label, key, color) => ({label, data: h.map(x => x[key]), borderColor: color, tension: .3, pointRadius: 0});
+  if (window.trendChart) window.trendChart.destroy();
+  window.trendChart = new Chart($("trend"), {type: "line", data: {labels, datasets: [
+    ds("DROP", "drop_total", "#f87171"), ds("path น่าสงสัย", "suspicious_total", "#fbbf24"),
+    ds("429", "rate_limited_total", "#60a5fa"), ds("SSH ล้มเหลว", "ssh_fail_total", "#c084fc")]},
+    options: {plugins: {legend: {labels: {color: "#e2e8f0"}}}, scales: {x: {ticks: {color: "#94a3b8"}}, y: {ticks: {color: "#94a3b8"}, beginAtZero: true}}}});
+}
+load().catch(e => $("updated").textContent = "โหลดข้อมูลไม่ได้: " + e.message);
+setInterval(() => load().catch(() => {}), 60000);
+</script>
+</body>
+</html>
